@@ -37,3 +37,19 @@ var vm = new MyVue({
 	}
 });
 
+/*var nodeList = ["A", "B", "C", null, null, "D", "E", null, "G", null, null, "F", null, null, null];
+var treeNode = TreeNode.createBinaryTree(nodeList);
+console.log("treeNode:", treeNode);
+treeNode.PreOrderTraverse();
+treeNode.InOrderTraverse();
+treeNode.PostOrderTraverse();*/
+
+var treeNode = TreeNode("A", [
+		TreeNode("B", [TreeNode("E")]),
+		TreeNode("C"),
+		TreeNode("D")
+	]);
+
+treeNode.traverseAsDFS();
+treeNode.traverseAsBFS();
+

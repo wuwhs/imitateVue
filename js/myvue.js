@@ -81,7 +81,7 @@ MyVue.prototype = {
 		result = template.replace(reg, function(rs, $1) {
 			return that[$1] || "";
 		});
-console.log("result:", result);
+
 		this.$el.innerHTML = result;
 	}
 };
