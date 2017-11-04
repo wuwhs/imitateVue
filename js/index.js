@@ -37,13 +37,16 @@ var vm = new MyVue({
 	}
 });
 
-/*var nodeList = ["A", "B", "C", null, null, "D", "E", null, "G", null, null, "F", null, null, null];
+/*
+var nodeList = ["A", "B", "C", null, null, "D", "E", null, "G", null, null, "F", null, null, null];
 var treeNode = TreeNode.createBinaryTree(nodeList);
 console.log("treeNode:", treeNode);
 treeNode.PreOrderTraverse();
 treeNode.InOrderTraverse();
-treeNode.PostOrderTraverse();*/
+treeNode.PostOrderTraverse();
+*/
 
+/*
 var treeNode = TreeNode("A", [
 		TreeNode("B", [TreeNode("E")]),
 		TreeNode("C"),
@@ -52,4 +55,18 @@ var treeNode = TreeNode("A", [
 
 treeNode.traverseAsDFS();
 treeNode.traverseAsBFS();
+*/
 
+var data = {
+	user: {
+		name: "wuwh",
+		age: 23
+	},
+	student: {
+		class: "111",
+		school: "baidu"
+	},
+	fruit: ["apple"]
+};
+
+console.log( Observer(data) );
