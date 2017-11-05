@@ -3,7 +3,6 @@ function MyVue(obj) {
 	this.$el = document.querySelector(obj.el);
 	this.$options = obj;
 	this._data = Object.create(null);
-
 	this.init();
 	obj = null;
 }
@@ -35,13 +34,20 @@ MyVue.prototype = {
 	},
 	// 监听data属性
 	watchData: function() {
-		var data = this.$options.data, // 得到data对象
+		var data = this._data = this.$options.data, // 得到data对象
 			keys = Object.keys(data), // data对象上全部的自身属性，返回数组
 			self = this;
 
+
+
 		// 监听每一个属性
+		Observer(data);
+
+		Object.assign(this, data);
+		
+console.log("this._data:", this._data);
 		keys.forEach(function(ele) {
-			Object.defineProperty(self, ele, {
+			/*Object.defineProperty(self, ele, {
 
 				get: function() {
 					return self._data[ele];
@@ -59,10 +65,10 @@ MyVue.prototype = {
 					// 数据变化，更新页面
 					MyVue.throttle(self.update, self, 50);
 				}
-			});
+			});*/
 
 			// 初次进入改变self[ele]，从而触发update方法
-			self[ele] = data[ele];
+			// self[ele] = data[ele];
 		});		
 	},
 
@@ -83,6 +89,19 @@ MyVue.prototype = {
 		});
 
 		this.$el.innerHTML = result;
+	},
+
+	$set: function(target, key, val) {
+		if(this.hasOwnProperty(key)) {
+			target[key] = val;
+		}
+		else {
+			var ob = target.$Observer;
+			ob.observe(val);
+			ob.convert(key, val);
+		}
+		
+		return val;
 	}
 };
 

@@ -2,7 +2,7 @@ var extendObj = {};
 var arrKeys = ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"];
 var extendArr = [];
 
-function proxyObject(obj, key, val, enume) {
+function def(obj, key, val, enume) {
 	Object.defineProperty(obj, key, {
 		value: val,
 		enumerable: !!enume,
@@ -11,7 +11,7 @@ function proxyObject(obj, key, val, enume) {
 	});
 }
 
-proxyObject(extendObj, "$set", function(key, val) {
+/*def(extendObj, "$set", function(key, val) {
 	if(this.hasOwnProperty(key)) {
 		return;
 	}
@@ -20,10 +20,10 @@ proxyObject(extendObj, "$set", function(key, val) {
 		ob.observe(val);
 		ob.convert(key, val);
 	}
-});
+});*/
 
 arrKeys.forEach(function(key) {
-	proxyObject(extendArr, key, function() {
+	def(extendArr, key, function() {
 		var result,
 			arrProto = Array.prototype,
 			ob = this.$Observer,
@@ -57,4 +57,4 @@ arrKeys.forEach(function(key) {
 
 		return result;
 	});
-})
+});

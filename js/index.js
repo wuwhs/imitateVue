@@ -57,7 +57,7 @@ treeNode.traverseAsDFS();
 treeNode.traverseAsBFS();
 */
 
-var data = {
+/*var data = {
 	user: {
 		name: "wuwh",
 		age: 23
@@ -69,4 +69,4 @@ var data = {
 	fruit: ["apple"]
 };
 
-console.log( Observer(data) );
+console.log( Observer(data) );*/
