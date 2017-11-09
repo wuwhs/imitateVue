@@ -21,7 +21,7 @@ Observer.prototype = {
             configurable: true,
             get: function() {
                 
-                // 判断是否需要添加订阅者
+                // 判断是否需要添加订阅者 什么时候添加订阅者呢？ 与实际页面DOM有关联的data属性才添加相应的订阅者
                 if(Dep.target) {
                     // 在这里添加一个订阅者
                     dep.addSub(Dep.target);
@@ -62,6 +62,7 @@ function Dep() {
 Dep.prototype = {
     addSub: function(sub) {
         this.subs.push(sub);
+        console.log("this.subs:",this.subs);
     },
     notify: function() {
         this.subs.forEach(function(sub) {
@@ -110,22 +111,107 @@ Watcher.prototype = {
     }
 }
 
-function MyVue(data, el, exp) {
+function Compile(el, vm) {
+    this.vm = vm;
+    this.el = document.querySelector(el);
+    this.fragment = null;
+    this.init();
+}
+
+Compile.prototype = {
+    init: function() {
+        if(this.el) {
+            console.log("this.el:", this.el);
+            // 移除页面元素生成文档碎片
+            this.fragment = this.nodeToFragment(this.el);
+            // 编译文档碎片
+            this.compileElement(this.fragment);
+            this.el.appendChild(this.fragment);
+        }
+        else {
+            console.log("DOM Selector is not exist");
+        }
+    },
+    /**
+     * 页面DOM节点转化成文档碎片
+     */
+    nodeToFragment: function(el) {
+        var fragment = document.createDocumentFragment();
+        var child = el.firstChild;
+
+        // 此处添加打印，出来的不是页面中原始的DOM，而是编译后的？
+        // NodeList是引用关系，在编译后相应的值被替换了，这里打印出来的NodeList是后来被引用更新了的
+        console.log("el:", el);       
+        // console.log("el.firstChild:", el.firstChild.nodeValue);
+        while(child) {
+            // append后，原el上的子节点被删除了，挂载在文档碎片上
+            fragment.appendChild(child);
+            child = el.firstChild;
+        }
+       
+        return fragment;
+    },
+    /**
+     * 编译文档碎片，遍历到当前是文本节点则去编译文本节点，如果当前是元素节点，并且存在子节点，则继续递归遍历
+     */
+    compileElement: function(fragment) {
+        var childNodes = fragment.childNodes;
+        var self = this;
+        [].slice.call(childNodes).forEach(function(node) {
+            var reg = /\{\{\s*(\w+)\s*\}\}/;
+            var text = node.textContent;
+
+            if(self.isTextNode(node) && reg.test(text)) {
+                self.compileText(node, reg.exec(text)[1]);
+            }
+
+            if(node.childNodes && node.childNodes.length) {
+                self.compileElement(node);
+            }
+        });
+    },
+    /**
+     * 编译文档碎片节点文本，即对标记替换
+     */
+    compileText: function(node, exp) {
+        var self = this;
+        var initText = this.vm[exp];
+        
+        this.updateText(node, initText);
+
+        var w = new Watcher(this.vm, exp, function(val) {
+            self.updateText(node, val);
+        });
+    },
+    /**
+     * 更新文档碎片相应的文本节点
+     */
+    updateText: function(node, val) {
+        node.textContent = typeof val === "undefined" ? "" : val;
+    },
+    /**
+     * 判断文本节点
+     */
+    isTextNode: function(node) {
+        return node.nodeType == 3;
+    }
+}
+
+function MyVue(options) {
     var self = this;
 
-    this.data = data;
+    this.vm = this;
+
+    this.data = options.data;
 
     // 把data属性的监听代理到根
-    Object.keys(data).forEach(function(key) {
+    Object.keys(this.data).forEach(function(key) {
         self.proxy(key);
     });
 
-    observe(data);
-    el.innerHTML = this[exp];
-    
-    new Watcher(this, exp, function(value) {
-        el.innerHTML = value;
-    });
+    observe(this.data);
+   
+    new Compile(options.el, this.vm);
 
     return this;
 }
@@ -146,14 +232,17 @@ MyVue.prototype.proxy = function(key) {
     });
 }
 
-var ele = document.querySelector("#name");
-var vm = new MyVue({
-    name: "hello word"
-}, ele, "name");
+var myvm = new MyVue({
+    el: "#demo",
+    data: {
+        name: "hello word",
+        desc: "MVVM"
+    }
+});
 
 setTimeout(function() {
     console.log("name值变了");
-    vm.name = "wawawa...vue";
+    myvm.name = "wawawa...vue";
 }, 2000);
 
 /* var library = {
