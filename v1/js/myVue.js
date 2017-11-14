@@ -21,8 +21,8 @@ function copyAugment(target, src, keys) {
 var arrKeys = ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"];
 var extendArr = [];
 
-arrKeys.forEach(function (key) {
-    def(extendArr, key, function () {
+arrKeys.forEach(function(key) {
+    def(extendArr, key, function() {
         var result,
             arrProto = Array.prototype,
             ob = this.$Observer,
@@ -80,33 +80,35 @@ function Observer(data) {
         var hasProto = "__proto__" in {};
 
         // 是否支持__proto__
-        var augment = hasProto
-            ? protoAugment
-            : copyAugment;
+        var augment = hasProto ?
+            protoAugment :
+            copyAugment;
         augment(data, extendArr, arrayKeys);
-    }
-    else {
+    } else {
         this.data = data;
         this.walk(data);
     }
 }
 
 Observer.prototype = {
-    walk: function (data) {
+    walk: function(data) {
         var self = this;
-        Object.keys(data).forEach(function (key) {
+        Object.keys(data).forEach(function(key) {
             self.defineReactive(data, key, data[key]);
         });
     },
 
-    defineReactive: function (data, key, val) {
+    /**
+     * 监听函数
+     */
+    defineReactive: function(data, key, val) {
         var dep = new Dep();
         var childObj = observe(val);
 
         Object.defineProperty(data, key, {
             enumerable: true,
             configurable: true,
-            get: function () {
+            get: function() {
 
                 // 判断是否需要添加订阅者 什么时候添加订阅者呢？ 与实际页面DOM有关联的data属性才添加相应的订阅者
                 if (Dep.target) {
@@ -117,7 +119,7 @@ Observer.prototype = {
                 }
                 return val;
             },
-            set: function (newVal) {
+            set: function(newVal) {
                 if (newVal === val) {
                     return;
                 }
@@ -130,7 +132,10 @@ Observer.prototype = {
         });
     },
 
-    observeArray(items) {
+    /**
+     * 监听数组
+     */
+    observeArray: function(items) {
         for (var i = 0, l = items.length; i < l; i++) {
             observe(items[i]);
         }
@@ -141,7 +146,7 @@ Observer.prototype = {
  * 监听器
  * @param {Object} data 被监听对象
  */
-function observe(data) {   
+function observe(data) {
 
     return new Observer(data);
 }
@@ -155,12 +160,12 @@ function Dep() {
 }
 
 Dep.prototype = {
-    addSub: function (sub) {
+    addSub: function(sub) {
         this.subs.push(sub);
         console.log("this.subs:", this.subs);
     },
-    notify: function () {
-        this.subs.forEach(function (sub) {
+    notify: function() {
+        this.subs.forEach(function(sub) {
             sub.update();
         });
     }
@@ -173,30 +178,32 @@ Dep.prototype = {
  * @param {Function} cb 回调函数
  */
 function Watcher(vm, exp, cb) {
-    this.cb = cb;
     this.vm = vm;
     this.exp = exp;
+    this.cb = cb;
     // 将自己添加到订阅器
     this.value = this.get();
 }
 
 Watcher.prototype = {
-    update: function () {
+    update: function() {
         this.run();
     },
-    run: function () {
+    run: function() {
         var value = this.traverse(this.vm.data, this.exp);
-        var oldVal = this.value;console.log("run...")
+        var oldVal = this.value;
+        console.log("run...")
         if (value !== oldVal) {
             this.value = value;
             this.cb.call(this.vm, value, oldVal);
         }
     },
-    get: function () {
+    get: function() {
         // 缓存自己 做个标记
         Dep.target = this;
 
-        // 强制执行监听器里的get函数 this.vm.data[this.exp] 调用getter，添加一个订阅者sub，存入到全局变量subs
+        // 强制执行监听器里的get函数 
+        // this.vm.data[this.exp] 调用getter，添加一个订阅者sub，存入到全局变量subs
         var value = this.traverse(this.vm.data, this.exp);
 
         // 释放自己
@@ -233,7 +240,7 @@ Compile.prototype = {
     /**
      * 初始
      */
-    init: function () {
+    init: function() {
         if (this.el) {
             console.log("this.el:", this.el);
             // 移除页面元素生成文档碎片
@@ -241,8 +248,7 @@ Compile.prototype = {
             // 编译文档碎片
             this.compileElement(this.fragment);
             this.el.appendChild(this.fragment);
-        }
-        else {
+        } else {
             console.log("DOM Selector is not exist");
         }
     },
@@ -250,7 +256,7 @@ Compile.prototype = {
     /**
      * 页面DOM节点转化成文档碎片
      */
-    nodeToFragment: function (el) {
+    nodeToFragment: function(el) {
         var fragment = document.createDocumentFragment();
         var child = el.firstChild;
 
@@ -269,20 +275,19 @@ Compile.prototype = {
     /**
      * 编译文档碎片，遍历到当前是文本节点则去编译文本节点，如果当前是元素节点，并且存在子节点，则继续递归遍历
      */
-    compileElement: function (fragment) {
+    compileElement: function(fragment) {
         var childNodes = fragment.childNodes;
         var self = this;
-        [].slice.call(childNodes).forEach(function (node) {
+        [].slice.call(childNodes).forEach(function(node) {
             // var reg = /\{\{\s*(.+)\s*\}\}/g;
             var reg = /\{\{\s*((?:.|\n)+?)\s*\}\}/g;
             var text = node.textContent;
 
             if (self.isElementNode(node)) {
                 self.compileAttr(node);
-            }
-            else if (self.isTextNode(node) && reg.test(text)) {
+            } else if (self.isTextNode(node) && reg.test(text)) {
                 reg.lastIndex = 0
-                
+
                 /* var match;
                 while(match = reg.exec(text)) {
                     self.compileText(node, match[1]);
@@ -300,11 +305,11 @@ Compile.prototype = {
     /**
      * 编译属性
      */
-    compileAttr: function (node) {
+    compileAttr: function(node) {
         var nodeAttrs = node.attributes;
         var self = this;
 
-        Array.prototype.forEach.call(nodeAttrs, function (attr) {
+        Array.prototype.forEach.call(nodeAttrs, function(attr) {
             var attrName = attr.name;
 
             // 只对vue本身指令进行操作
@@ -328,22 +333,22 @@ Compile.prototype = {
     /**
      * 编译文档碎片节点文本，即对标记替换
      */
-    compileText: function (node, exp) {
+    compileText: function(node, exp) {
         var self = this;
         var exps = exp.split(".");
         var initText = this.vm;
 
-        exps.forEach(function (item) {
+        exps.forEach(function(item) {
             initText = initText[item];
         });
 
-        if(typeof initText == "undefined") {
+        if (typeof initText == "undefined") {
             return
         }
 
         this.updateText(node, initText);
 
-        var w = new Watcher(this.vm, exp, function (val) {
+        var w = new Watcher(this.vm, exp, function(val) {
             self.updateText(node, val);
         });
     },
@@ -351,7 +356,7 @@ Compile.prototype = {
     /**
      * 编译事件指令
      */
-    compileEvent: function (node, vm, exp, attrName) {
+    compileEvent: function(node, vm, exp, attrName) {
         // @xxx v-on:xxx
         var onRE = /^@|^v-on:/;
         var eventType = attrName.replace(onRE, "");
@@ -366,15 +371,15 @@ Compile.prototype = {
     /**
      * 编译v-model指令
      */
-    compileModel: function (node, vm, exp, attrName) {
+    compileModel: function(node, vm, exp, attrName) {
         var self = this;
         var val = this.vm[exp];
         this.modelUpdater(node, val);
-        new Watcher(this.vm, exp, function (value) {
+        new Watcher(this.vm, exp, function(value) {
             self.modelUpdater(node, value);
         });
 
-        node.addEventListener("input", function (e) {
+        node.addEventListener("input", function(e) {
             var newVal = e.target.value;
             if (val === newVal) {
                 return;
@@ -387,21 +392,21 @@ Compile.prototype = {
     /**
      * 更新文档碎片相应的文本节点
      */
-    updateText: function (node, val) {
+    updateText: function(node, val) {
         node.textContent = typeof val === "undefined" ? "" : val;
     },
 
     /**
      * model更新节点
      */
-    modelUpdater: function (node, val, oldVal) {
+    modelUpdater: function(node, val, oldVal) {
         node.value = typeof val == "undefined" ? "" : val;
     },
 
     /**
      * 属性是否是vue指令，包括v-xxx:,:xxx,@xxx
      */
-    isDirective: function (attrName) {
+    isDirective: function(attrName) {
         var dirRE = /^v-|^@|^:/;
         return dirRE.test(attrName);
     },
@@ -409,7 +414,7 @@ Compile.prototype = {
     /**
      * 属性是否是事件指令，v-on:,@
      */
-    isEventDirective: function (attrName) {
+    isEventDirective: function(attrName) {
         var onRE = /^v-on:|^@/;
         return onRE.test(attrName);
     },
@@ -417,7 +422,7 @@ Compile.prototype = {
     /**
      * 属性是否是v-model指令
      */
-    isModelDirective: function (attrName) {
+    isModelDirective: function(attrName) {
         var mdRE = /^v-model/;
         return mdRE.test(attrName);
     },
@@ -425,14 +430,14 @@ Compile.prototype = {
     /**
      * 判断元素节点
      */
-    isElementNode: function (node) {
+    isElementNode: function(node) {
         return node.nodeType == 1;
     },
 
     /**
      * 判断文本节点
      */
-    isTextNode: function (node) {
+    isTextNode: function(node) {
         return node.nodeType == 3;
     }
 }
@@ -447,7 +452,7 @@ function MyVue(options) {
     this.data = options.data;
 
     // 把data属性的监听代理到根
-    Object.keys(this.data).forEach(function (key) {
+    Object.keys(this.data).forEach(function(key) {
         self.proxy(key);
     });
 
@@ -462,7 +467,7 @@ function MyVue(options) {
 /**
  * 将数据拓展到vue的根，方便读取和设置
  */
-MyVue.prototype.proxy = function (key) {
+MyVue.prototype.proxy = function(key) {
     var self = this;
 
     Object.defineProperty(this, key, {
@@ -494,7 +499,7 @@ function set(target, key, val) {
         return val
     }
     var ob = (target).$Observer;
-    
+
     if (!ob) {
         target[key] = val;
         return val
@@ -503,7 +508,7 @@ function set(target, key, val) {
     ob.defineReactive(target, key, val);
 
     ob.dep.notify();
-    
+
     return val
 }
 
