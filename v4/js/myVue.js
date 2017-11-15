@@ -54,18 +54,11 @@ Observer.prototype = {
                 console.log("属性：" + key + "被监听了，现在值为：" + newVal);
 
                 // 通知所有订阅者
-                dep.notify(newVal);
+                dep.notify();
             }
         });
 
         updateView(val);
-
-        // 订阅器标识本身实例
-        Dep.target = dep;
-        // 强行执行getter，往订阅器中添加订阅者
-        var v = data[key];
-        // 释放自己
-        Dep.target = null;
     }
 }
 
@@ -89,15 +82,53 @@ function Dep() {
 Dep.prototype = {
     addSub: function(sub) {
         this.subs.push(sub);
-        console.log("this.subs:", this.subs);
     },
-    notify: function(data) {
+    notify: function() {
         this.subs.forEach(function(sub) {
-            sub.update(data);
+            sub.update();
         });
+    }
+};
+
+/**
+ * 订阅者
+ * @param {Object} vm vue对象
+ * @param {String} exp 属性值
+ * @param {Function} cb 回调函数
+ */
+function Watcher(vm, exp, cb) {
+    this.vm = vm;
+    this.exp = exp;
+    this.cb = cb;
+    // 将自己添加到订阅器
+    this.value = this.get();
+}
+
+Watcher.prototype = {
+    update: function() {
+        this.run();
     },
-    update: function(val) {
-        updateView(val)
+    run: function() {
+        var value = this.vm.data[this.exp];
+        var oldVal = this.value;
+
+        if (value !== oldVal) {
+            this.value = value;
+            this.cb.call(this.vm, value, oldVal);
+        }
+    },
+    get: function() {
+        // 缓存自己 做个标记
+        Dep.target = this;
+
+        // 强制执行监听器里的get函数 
+        // this.vm.data[this.exp] 调用getter，添加一个订阅者sub，存入到全局变量subs
+        var value = this.vm.data[this.exp];
+
+        // 释放自己
+        Dep.target = null;
+
+        return value;
     }
 };
 
@@ -112,6 +143,13 @@ function MyVue(options) {
     this.data = options.data;
 
     observe(this.data);
+
+    var $name = document.querySelector("#name");
+
+    // 给name属性添加一个订阅者到订阅器中，当属性发生变化后，触发回调
+    var w = new Watcher(this, "name", function(val) {
+        $name.innerHTML = val;
+    });
 
     return this;
 }

@@ -1,63 +1,22 @@
-function def(obj, key, val, enume) {
-    Object.defineProperty(obj, key, {
-        value: val,
-        enumerable: !!enume,
-        writable: true,
-        configurable: true
-    });
-}
-
-function protoAugment(target, src, keys) {
-    target.__proto__ = src;
-}
-
-function copyAugment(target, src, keys) {
-    for (var i = 0, l = keys.length; i < l; i++) {
-        var key = keys[i];
-        def(target, key, src[key]);
+/**
+ * 根据对象属性路径，最终获取值
+ * @param {Object} obj 对象
+ * @param {String} path 路径
+ * return 值 
+ */
+function parsePath(obj, path) {
+    var bailRE = /[^\w.$]/;
+    if (bailRE.test(path)) {
+        return
     }
+    var segments = path.split('.');
+
+    for (var i = 0; i < segments.length; i++) {
+        if (!obj) { return }
+        obj = obj[segments[i]];
+    }
+    return obj;
 }
-
-var arrKeys = ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"];
-var extendArr = [];
-
-arrKeys.forEach(function(key) {
-    def(extendArr, key, function() {
-        var result,
-            arrProto = Array.prototype,
-            ob = this.$Observer,
-            arr = arrProto.slice.call(arguments),
-            inserted,
-            index;
-
-        switch (key) {
-            case "push":
-                inserted = arr;
-                index = this.length;
-                break;
-            case "unshift":
-                inserted = arr;
-                index = 0;
-                break;
-            case "splice":
-                inserted = arr.slice(2);
-                index = arr[0];
-                break;
-        }
-
-        result = arrProto[key].apply(this, arguments);
-
-        if (inserted) {
-            ob.observeArray(inserted);
-        }
-
-        ob.dep.notify();
-
-        return result;
-    });
-});
-
-var arrayKeys = Object.getOwnPropertyNames(extendArr);
 
 /**
  * 监听器构造函数
@@ -65,29 +24,12 @@ var arrayKeys = Object.getOwnPropertyNames(extendArr);
  */
 function Observer(data) {
 
-    this.dep = new Dep();
-
     if (!data || typeof data !== "object") {
         return;
     }
 
-    // 在每个object上添加一个observer
-    def(data, "$Observer", this);
-
-    // 继承变异方法push、pop
-    if (Array.isArray(data)) {
-
-        var hasProto = "__proto__" in {};
-
-        // 是否支持__proto__
-        var augment = hasProto ?
-            protoAugment :
-            copyAugment;
-        augment(data, extendArr, arrayKeys);
-    } else {
-        this.data = data;
-        this.walk(data);
-    }
+    this.data = data;
+    this.walk(data);
 }
 
 Observer.prototype = {
@@ -106,7 +48,8 @@ Observer.prototype = {
      */
     defineReactive: function(data, key, val) {
         var dep = new Dep();
-        var childObj = observe(val);
+
+        observe(val);
 
         Object.defineProperty(data, key, {
             enumerable: true,
@@ -115,11 +58,10 @@ Observer.prototype = {
 
                 // 判断是否需要添加订阅者 什么时候添加订阅者呢？ 与实际页面DOM有关联的data属性才添加相应的订阅者
                 if (Dep.target) {
-                    // 在这里添加一个订阅者
+                    // 添加一个订阅者
                     dep.addSub(Dep.target);
-
-                    console.log("订阅者 get data:", val);
                 }
+
                 return val;
             },
             set: function(newVal) {
@@ -129,21 +71,14 @@ Observer.prototype = {
 
                 val = newVal;
 
-                dep.notify();
                 console.log("属性：" + key + "被监听了，现在值为：" + newVal);
+
+                // 通知所有订阅者
+                dep.notify();
             }
         });
-    },
-
-    /**
-     * 监听数组
-     */
-    observeArray: function(items) {
-        for (var i = 0, l = items.length; i < l; i++) {
-            observe(items[i]);
-        }
     }
-}
+};
 
 /**
  * 监听器
@@ -165,14 +100,13 @@ function Dep() {
 Dep.prototype = {
     addSub: function(sub) {
         this.subs.push(sub);
-        console.log("this.subs:", this.subs);
     },
     notify: function() {
         this.subs.forEach(function(sub) {
             sub.update();
         });
     }
-}
+};
 
 /**
  * 订阅者
@@ -193,9 +127,9 @@ Watcher.prototype = {
         this.run();
     },
     run: function() {
-        var value = this.traverse(this.vm.data, this.exp);
+        var value = parsePath(this.vm, this.exp);
         var oldVal = this.value;
-        console.log("run...")
+
         if (value !== oldVal) {
             this.value = value;
             this.cb.call(this.vm, value, oldVal);
@@ -207,25 +141,14 @@ Watcher.prototype = {
 
         // 强制执行监听器里的get函数 
         // this.vm.data[this.exp] 调用getter，添加一个订阅者sub，存入到全局变量subs
-        var value = this.traverse(this.vm.data, this.exp);
+        var value = parsePath(this.vm, this.exp);
 
         // 释放自己
         Dep.target = null;
 
         return value;
-    },
-
-    traverse: function(data, exp) {
-        var exps = exp.split(".");
-        var d = data;
-
-        exps.forEach(function(item) {
-            d = d[item];
-        });
-
-        return d;
     }
-}
+};
 
 /**
  * 编译器构造函数
@@ -339,18 +262,12 @@ Compile.prototype = {
     compileText: function(node, exp) {
         var self = this;
         var exps = exp.split(".");
-        var initText = this.vm;
+        var initText = parsePath(this.vm, exp);
 
-        exps.forEach(function(item) {
-            initText = initText[item];
-        });
-
-        if (typeof initText == "undefined") {
-            return
-        }
-
+        // 初始化视图
         this.updateText(node, initText);
 
+        // 添加一个订阅者到订阅器
         var w = new Watcher(this.vm, exp, function(val) {
             self.updateText(node, val);
         });
@@ -377,17 +294,22 @@ Compile.prototype = {
     compileModel: function(node, vm, exp, attrName) {
         var self = this;
         var val = this.vm[exp];
+
+        // 初始化视图
         this.modelUpdater(node, val);
+
+        // 添加一个订阅者到订阅器
         new Watcher(this.vm, exp, function(value) {
             self.modelUpdater(node, value);
         });
 
+        // 绑定input事件
         node.addEventListener("input", function(e) {
             var newVal = e.target.value;
             if (val === newVal) {
                 return;
             }
-            self.vm[exp] = newVal;
+            self.vm.data[exp] = newVal;
             // val = newVal;
         });
     },
@@ -454,8 +376,6 @@ function MyVue(options) {
 
     this.vm = this;
 
-    this.methods = options.methods;
-
     this.data = options.data;
 
     // 把data属性的监听代理到根
@@ -469,7 +389,6 @@ function MyVue(options) {
 
     return this;
 }
-
 
 /**
  * 将数据拓展到vue的根，方便读取和设置
@@ -488,35 +407,3 @@ MyVue.prototype.proxy = function(key) {
         }
     });
 }
-
-/**
- * vue的set方法，用于外部新增属性 Vue.$set(target, key, val)
- * @param {Object} target 数据
- * @param {String} key 属性
- * @param {*} val 值
- */
-function set(target, key, val) {
-    if (Array.isArray(target)) {
-        target.length = Math.max(target.length, key);
-        target.splice(key, 1, val);
-        return val
-    }
-    if (this.hasOwnProperty(key)) {
-        target[key] = val;
-        return val
-    }
-    var ob = (target).$Observer;
-
-    if (!ob) {
-        target[key] = val;
-        return val
-    }
-
-    ob.defineReactive(target, key, val);
-
-    ob.dep.notify();
-
-    return val
-}
-
-MyVue.prototype.$set = set;
