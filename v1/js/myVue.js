@@ -91,6 +91,9 @@ function Observer(data) {
 }
 
 Observer.prototype = {
+    /**
+     * 属性遍历
+     */
     walk: function(data) {
         var self = this;
         Object.keys(data).forEach(function(key) {
@@ -442,6 +445,10 @@ Compile.prototype = {
     }
 }
 
+/**
+ * vue构造函数
+ * @param {Object} options 所有入参
+ */
 function MyVue(options) {
     var self = this;
 
