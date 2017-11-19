@@ -1,8 +1,13 @@
-
 var myvm = new MyVue({
     el: "#demo",
     data: {
-        name: "hello word"
+        name: "hello word",
+        myColor: "red"
+    },
+    methods: {
+        clickOk: function() {
+            alert("I am OK");
+        }
     }
 });
 

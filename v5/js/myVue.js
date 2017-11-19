@@ -189,7 +189,9 @@ Compile.prototype = {
             var reg = /\{\{\s*((?:.|\n)+?)\s*\}\}/g;
             var text = node.textContent;
 
-            if (self.isTextNode(node) && reg.test(text)) {
+            if (self.isElementNode(node)) {
+                self.compileAttr(node);
+            } else if (self.isTextNode(node) && reg.test(text)) {
                 reg.lastIndex = 0
 
                 /* var match;
@@ -207,20 +209,44 @@ Compile.prototype = {
     },
 
     /**
+     * 编译属性
+     */
+    compileAttr: function(node) {
+        var nodeAttrs = node.attributes;
+        var self = this;
+
+        Array.prototype.forEach.call(nodeAttrs, function(attr) {
+            var attrName = attr.name;
+
+            // 只对vue本身指令进行操作
+            if (self.isDirective(attrName)) {
+                var exp = attr.value;
+
+                // v-on指令
+                if (self.isOnDirective(attrName)) {
+                    self.compileOn(node, self.vm, exp, attrName);
+                }
+                // v-bind指令
+                if(self.isBindDirective(attrName)) {
+                    self.compileBind(node, self.vm, exp, attrName);
+                }
+                // v-model
+                else if (self.isModelDirective(attrName)) {
+                    self.compileModel(node, self.vm, exp, attrName);
+                }
+
+                node.removeAttribute(attrName);
+            }
+        })
+    },
+
+    /**
      * 编译文档碎片节点文本，即对标记替换
      */
     compileText: function(node, exp) {
         var self = this;
         var exps = exp.split(".");
-        var initText = this.vm.data;
-
-        exps.forEach(function(item) {
-            initText = initText[item];
-        });
-
-        if (typeof initText == "undefined") {
-            return
-        }
+        var initText = this.vm.data[exp];
 
         // 初始化视图
         this.updateText(node, initText);
@@ -232,10 +258,110 @@ Compile.prototype = {
     },
 
     /**
+     * 编译v-on指令
+     */
+    compileOn: function(node, vm, exp, attrName) {
+        // @xxx v-on:xxx
+        var onRE = /^@|^v-on:/;
+        var eventType = attrName.replace(onRE, "");
+
+        var cb = vm.methods[exp];
+
+        if (eventType && cb) {
+            node.addEventListener(eventType, cb.bind(vm), false);
+        }
+    },
+
+    /**
+     * 编译v-bind指令
+     */
+    compileBind: function (node, vm, exp, attrName) {
+        // :xxx v-bind:xxx
+        var bindRE = /^:|^v-bind:/;
+        var attr = attrName.replace(bindRE, "");
+
+        var val = vm.data[exp];
+
+        node.setAttribute(attr, val);
+    },
+
+    /**
+     * 编译v-model指令
+     */
+    compileModel: function(node, vm, exp, attrName) {
+        var self = this;
+        var val = this.vm.data[exp];
+
+        // 初始化视图
+        this.modelUpdater(node, val);
+
+        // 添加一个订阅者到订阅器
+        new Watcher(this.vm, exp, function(value) {
+            self.modelUpdater(node, value);
+        });
+
+        // 绑定input事件
+        node.addEventListener("input", function(e) {
+            var newVal = e.target.value;
+            if (val === newVal) {
+                return;
+            }
+            self.vm.data[exp] = newVal;
+            // val = newVal;
+        });
+    },
+
+    /**
      * 更新文档碎片相应的文本节点
      */
     updateText: function(node, val) {
         node.textContent = typeof val === "undefined" ? "" : val;
+    },
+
+    /**
+     * model更新节点
+     */
+    modelUpdater: function(node, val, oldVal) {
+        node.value = typeof val == "undefined" ? "" : val;
+    },
+
+    /**
+     * 属性是否是vue指令，包括v-xxx:,:xxx,@xxx
+     */
+    isDirective: function(attrName) {
+        var dirRE = /^v-|^@|^:/;
+        return dirRE.test(attrName);
+    },
+
+    /**
+     * 属性是否是v-on指令
+     */
+    isOnDirective: function(attrName) {
+        var onRE = /^v-on:|^@/;
+        return onRE.test(attrName);
+    },
+
+    /**
+     * 属性是否是v-bind指令
+     */
+    isBindDirective: function (attrName) {
+        var bindRE = /^v-bind:|^:/;
+        return bindRE.test(attrName);
+    },
+
+    /**
+     * 属性是否是v-model指令
+     */
+    isModelDirective: function(attrName) {
+        var mdRE = /^v-model/;
+        return mdRE.test(attrName);
+    },
+
+    /**
+     * 判断元素节点
+     */
+    isElementNode: function(node) {
+        return node.nodeType == 1;
     },
 
     /**
@@ -255,6 +381,8 @@ function MyVue(options) {
     this.vm = this;
 
     this.data = options.data;
+
+    this.methods = options.methods;
 
     observe(this.data);
 

@@ -1,4 +1,24 @@
 /**
+ * 根据对象属性路径，最终获取值
+ * @param {Object} obj 对象
+ * @param {String} path 路径
+ * return 值 
+ */
+function parsePath(obj, path) {
+    var bailRE = /[^\w.$]/;
+    if (bailRE.test(path)) {
+        return
+    }
+    var segments = path.split('.');
+
+    for (var i = 0; i < segments.length; i++) {
+        if (!obj) { return }
+        obj = obj[segments[i]];
+    }
+    return obj;
+}
+
+/**
  * 监听器构造函数
  * @param {Object} data 被监听数据 
  */
@@ -107,7 +127,7 @@ Watcher.prototype = {
         this.run();
     },
     run: function() {
-        var value = this.vm.data[this.exp];
+        var value = parsePath(this.vm, this.exp);
         var oldVal = this.value;
 
         if (value !== oldVal) {
@@ -121,7 +141,7 @@ Watcher.prototype = {
 
         // 强制执行监听器里的get函数 
         // this.vm.data[this.exp] 调用getter，添加一个订阅者sub，存入到全局变量subs
-        var value = this.vm.data[this.exp];
+        var value = parsePath(this.vm, this.exp);
 
         // 释放自己
         Dep.target = null;
@@ -146,7 +166,7 @@ Compile.prototype = {
     /**
      * 初始
      */
-    init: function() {
+    init: function () {
         if (this.el) {
             console.log("this.el:", this.el);
             // 移除页面元素生成文档碎片
@@ -162,7 +182,7 @@ Compile.prototype = {
     /**
      * 页面DOM节点转化成文档碎片
      */
-    nodeToFragment: function(el) {
+    nodeToFragment: function (el) {
         var fragment = document.createDocumentFragment();
         var child = el.firstChild;
 
@@ -181,10 +201,10 @@ Compile.prototype = {
     /**
      * 编译文档碎片，遍历到当前是文本节点则去编译文本节点，如果当前是元素节点，并且存在子节点，则继续递归遍历
      */
-    compileElement: function(fragment) {
+    compileElement: function (fragment) {
         var childNodes = fragment.childNodes;
         var self = this;
-        [].slice.call(childNodes).forEach(function(node) {
+        [].slice.call(childNodes).forEach(function (node) {
             // var reg = /\{\{\s*(.+)\s*\}\}/g;
             var reg = /\{\{\s*((?:.|\n)+?)\s*\}\}/g;
             var text = node.textContent;
@@ -211,20 +231,24 @@ Compile.prototype = {
     /**
      * 编译属性
      */
-    compileAttr: function(node) {
+    compileAttr: function (node) {
         var nodeAttrs = node.attributes;
         var self = this;
 
-        Array.prototype.forEach.call(nodeAttrs, function(attr) {
+        Array.prototype.forEach.call(nodeAttrs, function (attr) {
             var attrName = attr.name;
 
             // 只对vue本身指令进行操作
             if (self.isDirective(attrName)) {
                 var exp = attr.value;
 
-                // 事件指令
-                if (self.isEventDirective(attrName)) {
-                    self.compileEvent(node, self.vm, exp, attrName);
+                // v-on指令
+                if (self.isOnDirective(attrName)) {
+                    self.compileOn(node, self.vm, exp, attrName);
+                }
+                // v-bind指令
+                if (self.isBindDirective(attrName)) {
+                    self.compileBind(node, self.vm, exp, attrName);
                 }
                 // v-model
                 else if (self.isModelDirective(attrName)) {
@@ -239,24 +263,22 @@ Compile.prototype = {
     /**
      * 编译文档碎片节点文本，即对标记替换
      */
-    compileText: function(node, exp) {
+    compileText: function (node, exp) {
         var self = this;
-        var exps = exp.split(".");
-        var initText = this.vm.data[exp];
 
         // 初始化视图
-        this.updateText(node, initText);
+        this.updateText(node, parsePath(this.vm, exp));
 
         // 添加一个订阅者到订阅器
-        var w = new Watcher(this.vm, exp, function(val) {
+        var w = new Watcher(this.vm, exp, function (val) {
             self.updateText(node, val);
         });
     },
 
     /**
-     * 编译事件指令
+     * 编译v-on指令
      */
-    compileEvent: function(node, vm, exp, attrName) {
+    compileOn: function (node, vm, exp, attrName) {
         // @xxx v-on:xxx
         var onRE = /^@|^v-on:/;
         var eventType = attrName.replace(onRE, "");
@@ -269,27 +291,40 @@ Compile.prototype = {
     },
 
     /**
+     * 编译v-bind指令
+     */
+    compileBind: function (node, vm, exp, attrName) {
+        // :xxx v-bind:xxx
+        var bindRE = /^:|^v-bind:/;
+        var attr = attrName.replace(bindRE, "");
+
+        var val = parsePath(vm, exp);
+
+        node.setAttribute(attr, val);
+    },
+
+    /**
      * 编译v-model指令
      */
-    compileModel: function(node, vm, exp, attrName) {
+    compileModel: function (node, vm, exp, attrName) {
         var self = this;
-        var val = this.vm.data[exp];
+        var val = this.vm[exp];
 
         // 初始化视图
         this.modelUpdater(node, val);
 
         // 添加一个订阅者到订阅器
-        new Watcher(this.vm, exp, function(value) {
+        new Watcher(this.vm, exp, function (value) {
             self.modelUpdater(node, value);
         });
 
         // 绑定input事件
-        node.addEventListener("input", function(e) {
+        node.addEventListener("input", function (e) {
             var newVal = e.target.value;
             if (val === newVal) {
                 return;
             }
-            self.vm.data[exp] = newVal;
+            self.vm[exp] = newVal;
             // val = newVal;
         });
     },
@@ -297,37 +332,45 @@ Compile.prototype = {
     /**
      * 更新文档碎片相应的文本节点
      */
-    updateText: function(node, val) {
+    updateText: function (node, val) {
         node.textContent = typeof val === "undefined" ? "" : val;
     },
 
     /**
      * model更新节点
      */
-    modelUpdater: function(node, val, oldVal) {
+    modelUpdater: function (node, val, oldVal) {
         node.value = typeof val == "undefined" ? "" : val;
     },
 
     /**
      * 属性是否是vue指令，包括v-xxx:,:xxx,@xxx
      */
-    isDirective: function(attrName) {
+    isDirective: function (attrName) {
         var dirRE = /^v-|^@|^:/;
         return dirRE.test(attrName);
     },
 
     /**
-     * 属性是否是事件指令，v-on:,@
+     * 属性是否是v-on指令
      */
-    isEventDirective: function(attrName) {
+    isOnDirective: function (attrName) {
         var onRE = /^v-on:|^@/;
         return onRE.test(attrName);
     },
 
     /**
+     * 属性是否是v-bind指令
+     */
+    isBindDirective: function (attrName) {
+        var bindRE = /^v-bind:|^:/;
+        return bindRE.test(attrName);
+    },
+
+    /**
      * 属性是否是v-model指令
      */
-    isModelDirective: function(attrName) {
+    isModelDirective: function (attrName) {
         var mdRE = /^v-model/;
         return mdRE.test(attrName);
     },
@@ -335,14 +378,14 @@ Compile.prototype = {
     /**
      * 判断元素节点
      */
-    isElementNode: function(node) {
+    isElementNode: function (node) {
         return node.nodeType == 1;
     },
 
     /**
      * 判断文本节点
      */
-    isTextNode: function(node) {
+    isTextNode: function (node) {
         return node.nodeType == 3;
     }
 };
@@ -352,14 +395,40 @@ Compile.prototype = {
  * @param {Object} options 所有入参
  */
 function MyVue(options) {
+    var self = this;
 
     this.vm = this;
 
     this.data = options.data;
+
+    this.methods = options.methods;
+
+    // 把data属性的监听代理到根
+    Object.keys(this.data).forEach(function(key) {
+        self.proxy(key);
+    });
 
     observe(this.data);
 
     new Compile(options.el, this.vm);
 
     return this;
+}
+
+/**
+ * 将数据拓展到vue的根，方便读取和设置
+ */
+MyVue.prototype.proxy = function(key) {
+    var self = this;
+
+    Object.defineProperty(this, key, {
+        enumerable: true,
+        configurable: true,
+        get: function proxyGetter() {
+            return self.data[key];
+        },
+        set: function proxySetter(newVal) {
+            self.data[key] = newVal;
+        }
+    });
 }

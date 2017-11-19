@@ -2,12 +2,19 @@ var myvm = new MyVue({
     el: "#demo",
     data: {
         name: "hello word",
+        myColor: "red",
         student: {
-            age: 22
+            name: "vue"
+        },
+        arr: [1, 2]
+    },
+    methods: {
+        clickOk: function () {
+            alert("I am OK");
         }
     }
 });
 
-setTimeout(function() {
+setTimeout(function () {
     myvm.data.name = "wawawa...vue was born";
 }, 2000);

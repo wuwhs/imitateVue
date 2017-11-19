@@ -18,18 +18,100 @@ function parsePath(obj, path) {
     return obj;
 }
 
+function def(obj, key, val, enume) {
+    Object.defineProperty(obj, key, {
+        value: val,
+        enumerable: !!enume,
+        writable: true,
+        configurable: true
+    });
+}
+
+function protoAugment(target, src, keys) {
+    target.__proto__ = src;
+}
+
+function copyAugment(target, src, keys) {
+    for (var i = 0, l = keys.length; i < l; i++) {
+        var key = keys[i];
+        def(target, key, src[key]);
+    }
+}
+
+var arrKeys = ["push", "pop", "shift", "unshift", "splice", "sort", "reverse"];
+var extendArr = [];
+
+arrKeys.forEach(function(key) {
+    def(extendArr, key, function() {
+        var result,
+            arrProto = Array.prototype,
+            ob = this.$Observer,
+            arr = arrProto.slice.call(arguments),
+            inserted,
+            index;
+
+        switch (key) {
+            case "push":
+                inserted = arr;
+                index = this.length;
+                break;
+            case "unshift":
+                inserted = arr;
+                index = 0;
+                break;
+            case "splice":
+                inserted = arr.slice(2);
+                index = arr[0];
+                break;
+        }
+
+        result = arrProto[key].apply(this, arguments);
+
+        // 监听新增数组对象属性
+        if (inserted) {
+            ob.observeArray(inserted);
+        }
+
+        ob.dep.notify();
+
+        return result;
+    });
+});
+
+var arrayKeys = Object.getOwnPropertyNames(extendArr);
+
 /**
  * 监听器构造函数
  * @param {Object} data 被监听数据 
  */
 function Observer(data) {
 
+    this.dep = new Dep();
+
     if (!data || typeof data !== "object") {
         return;
     }
 
-    this.data = data;
-    this.walk(data);
+    // 在每个object上添加一个observer
+    def(data, "$Observer", this);
+
+    // 继承变异方法push、pop
+    if (Array.isArray(data)) {
+
+        var hasProto = "__proto__" in {};
+
+        // 是否支持__proto__
+        var augment = hasProto ?
+            protoAugment :
+            copyAugment;
+        augment(data, extendArr, arrayKeys);
+
+        // 监听数组对象属性
+        this.observeArray(data);
+    } else {
+        this.data = data;
+        this.walk(data);
+    }
 }
 
 Observer.prototype = {
@@ -77,6 +159,16 @@ Observer.prototype = {
                 dep.notify();
             }
         });
+    },
+
+    /**
+     * 监听数组
+     */
+    observeArray: function(items) {
+        console.log("items:", items);
+        for (var i = 0, l = items.length; i < l; i++) {
+            observe(items[i]);
+        }
     }
 };
 
@@ -101,7 +193,7 @@ Dep.prototype = {
     addSub: function(sub) {
         this.subs.push(sub);
     },
-    notify: function() {
+    notify: function() {console.log("this.subs", this.subs);
         this.subs.forEach(function(sub) {
             sub.update();
         });
@@ -166,7 +258,7 @@ Compile.prototype = {
     /**
      * 初始
      */
-    init: function() {
+    init: function () {
         if (this.el) {
             console.log("this.el:", this.el);
             // 移除页面元素生成文档碎片
@@ -182,7 +274,7 @@ Compile.prototype = {
     /**
      * 页面DOM节点转化成文档碎片
      */
-    nodeToFragment: function(el) {
+    nodeToFragment: function (el) {
         var fragment = document.createDocumentFragment();
         var child = el.firstChild;
 
@@ -201,10 +293,10 @@ Compile.prototype = {
     /**
      * 编译文档碎片，遍历到当前是文本节点则去编译文本节点，如果当前是元素节点，并且存在子节点，则继续递归遍历
      */
-    compileElement: function(fragment) {
+    compileElement: function (fragment) {
         var childNodes = fragment.childNodes;
         var self = this;
-        [].slice.call(childNodes).forEach(function(node) {
+        [].slice.call(childNodes).forEach(function (node) {
             // var reg = /\{\{\s*(.+)\s*\}\}/g;
             var reg = /\{\{\s*((?:.|\n)+?)\s*\}\}/g;
             var text = node.textContent;
@@ -231,20 +323,24 @@ Compile.prototype = {
     /**
      * 编译属性
      */
-    compileAttr: function(node) {
+    compileAttr: function (node) {
         var nodeAttrs = node.attributes;
         var self = this;
 
-        Array.prototype.forEach.call(nodeAttrs, function(attr) {
+        Array.prototype.forEach.call(nodeAttrs, function (attr) {
             var attrName = attr.name;
 
             // 只对vue本身指令进行操作
             if (self.isDirective(attrName)) {
                 var exp = attr.value;
 
-                // 事件指令
-                if (self.isEventDirective(attrName)) {
-                    self.compileEvent(node, self.vm, exp, attrName);
+                // v-on指令
+                if (self.isOnDirective(attrName)) {
+                    self.compileOn(node, self.vm, exp, attrName);
+                }
+                // v-bind指令
+                if (self.isBindDirective(attrName)) {
+                    self.compileBind(node, self.vm, exp, attrName);
                 }
                 // v-model
                 else if (self.isModelDirective(attrName)) {
@@ -259,24 +355,22 @@ Compile.prototype = {
     /**
      * 编译文档碎片节点文本，即对标记替换
      */
-    compileText: function(node, exp) {
+    compileText: function (node, exp) {
         var self = this;
-        var exps = exp.split(".");
-        var initText = parsePath(this.vm, exp);
 
         // 初始化视图
-        this.updateText(node, initText);
+        this.updateText(node, parsePath(this.vm, exp));
 
         // 添加一个订阅者到订阅器
-        var w = new Watcher(this.vm, exp, function(val) {
+        var w = new Watcher(this.vm, exp, function (val) {
             self.updateText(node, val);
         });
     },
 
     /**
-     * 编译事件指令
+     * 编译v-on指令
      */
-    compileEvent: function(node, vm, exp, attrName) {
+    compileOn: function (node, vm, exp, attrName) {
         // @xxx v-on:xxx
         var onRE = /^@|^v-on:/;
         var eventType = attrName.replace(onRE, "");
@@ -289,9 +383,22 @@ Compile.prototype = {
     },
 
     /**
+     * 编译v-bind指令
+     */
+    compileBind: function (node, vm, exp, attrName) {
+        // :xxx v-bind:xxx
+        var bindRE = /^:|^v-bind:/;
+        var attr = attrName.replace(bindRE, "");
+
+        var val = parsePath(vm, exp);
+
+        node.setAttribute(attr, val);
+    },
+
+    /**
      * 编译v-model指令
      */
-    compileModel: function(node, vm, exp, attrName) {
+    compileModel: function (node, vm, exp, attrName) {
         var self = this;
         var val = this.vm[exp];
 
@@ -299,17 +406,17 @@ Compile.prototype = {
         this.modelUpdater(node, val);
 
         // 添加一个订阅者到订阅器
-        new Watcher(this.vm, exp, function(value) {
+        new Watcher(this.vm, exp, function (value) {
             self.modelUpdater(node, value);
         });
 
         // 绑定input事件
-        node.addEventListener("input", function(e) {
+        node.addEventListener("input", function (e) {
             var newVal = e.target.value;
             if (val === newVal) {
                 return;
             }
-            self.vm.data[exp] = newVal;
+            self.vm[exp] = newVal;
             // val = newVal;
         });
     },
@@ -317,37 +424,45 @@ Compile.prototype = {
     /**
      * 更新文档碎片相应的文本节点
      */
-    updateText: function(node, val) {
+    updateText: function (node, val) {
         node.textContent = typeof val === "undefined" ? "" : val;
     },
 
     /**
      * model更新节点
      */
-    modelUpdater: function(node, val, oldVal) {
+    modelUpdater: function (node, val, oldVal) {
         node.value = typeof val == "undefined" ? "" : val;
     },
 
     /**
      * 属性是否是vue指令，包括v-xxx:,:xxx,@xxx
      */
-    isDirective: function(attrName) {
+    isDirective: function (attrName) {
         var dirRE = /^v-|^@|^:/;
         return dirRE.test(attrName);
     },
 
     /**
-     * 属性是否是事件指令，v-on:,@
+     * 属性是否是v-on指令
      */
-    isEventDirective: function(attrName) {
+    isOnDirective: function (attrName) {
         var onRE = /^v-on:|^@/;
         return onRE.test(attrName);
     },
 
     /**
+     * 属性是否是v-bind指令
+     */
+    isBindDirective: function (attrName) {
+        var bindRE = /^v-bind:|^:/;
+        return bindRE.test(attrName);
+    },
+
+    /**
      * 属性是否是v-model指令
      */
-    isModelDirective: function(attrName) {
+    isModelDirective: function (attrName) {
         var mdRE = /^v-model/;
         return mdRE.test(attrName);
     },
@@ -355,14 +470,14 @@ Compile.prototype = {
     /**
      * 判断元素节点
      */
-    isElementNode: function(node) {
+    isElementNode: function (node) {
         return node.nodeType == 1;
     },
 
     /**
      * 判断文本节点
      */
-    isTextNode: function(node) {
+    isTextNode: function (node) {
         return node.nodeType == 3;
     }
 };
@@ -377,6 +492,8 @@ function MyVue(options) {
     this.vm = this;
 
     this.data = options.data;
+
+    this.methods = options.methods;
 
     // 把data属性的监听代理到根
     Object.keys(this.data).forEach(function(key) {
@@ -406,4 +523,38 @@ MyVue.prototype.proxy = function(key) {
             self.data[key] = newVal;
         }
     });
+};
+
+/**
+ * vue的set方法，用于外部新增属性 Vue.$set(target, key, val)
+ * @param {Object} target 数据
+ * @param {String} key 属性
+ * @param {*} val 值
+ */
+function set(target, key, val) {
+    if (Array.isArray(target)) {
+        target.length = Math.max(target.length, key);
+        target.splice(key, 1, val);
+        return val;
+    }
+    
+    if (target.hasOwnProperty(key)) {
+        target[key] = val;
+        return val
+    }
+    var ob = (target).$Observer;
+    
+    if (!ob) {
+        target[key] = val;
+        return val
+    }
+   
+    // 对新增属性定义监听
+    ob.defineReactive(target, key, val);
+
+    ob.dep.notify();
+
+    return val;
 }
+
+MyVue.prototype.$set = set;

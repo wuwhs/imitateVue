@@ -9,4 +9,3 @@ var myvm = new MyVue({
 setTimeout(function() {
     myvm.data.name = "wawawa...vue was born";
 }, 2000);
-
